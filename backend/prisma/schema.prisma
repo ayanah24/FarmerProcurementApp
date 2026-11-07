@@ -1,0 +1,105 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CENTER_OPERATOR
+  OFFICE_MANAGER
+}
+
+enum SyncStatus {
+  PENDING
+  SYNCED
+}
+
+enum PaymentStatus {
+  PENDING
+  APPROVED
+  PAID
+}
+
+model User {
+  id           String        @id @default(uuid())
+  username     String        @unique
+  password     String
+  role         Role
+  centerName   String?       // Only for Operators
+  procurements Procurement[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Farmer {
+  id             String        @id @default(uuid())
+  farmerCode     String        @unique // e.g., F-1001
+  name           String
+  village        String
+  landArea       Decimal       @db.Decimal(10, 2)
+  bankName       String
+  accountNumber  String
+  ifscCode       String
+  isVerified     Boolean       @default(false)
+  procurements   Procurement[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+}
+
+model Crop {
+  id           String        @id @default(uuid())
+  name         String        @unique // e.g., Soybean, Tur
+  procurements Procurement[]
+  prices       PriceBoard[]
+}
+
+model PriceBoard {
+  id               String   @id @default(uuid())
+  date             DateTime @default(now())
+  cropId           String
+  crop             Crop     @relation(fields: [cropId], references: [id])
+  grade            String   // e.g., A, B, C
+  ratePerQuintal   Decimal  @db.Decimal(10, 2) // Rate in Rupees
+  createdAt        DateTime @default(now())
+
+  @@unique([date, cropId, grade])
+}
+
+model Procurement {
+  id                String        @id @default(uuid())
+  slipNo            String        @unique // e.g., C07-24518
+  farmerId          String
+  farmer            Farmer        @relation(fields: [farmerId], references: [id])
+  cropId            String
+  crop              Crop          @relation(fields: [cropId], references: [id])
+  operatorId        String
+  operator          User          @relation(fields: [operatorId], references: [id])
+
+  grossWeight       Decimal       @db.Decimal(10, 1)
+  tareWeight        Decimal       @db.Decimal(10, 1)
+  netWeight         Decimal       @db.Decimal(10, 1)
+  moisture          Decimal       @db.Decimal(10, 1)
+  grade             String
+  rateApplied       Decimal       @db.Decimal(10, 2)
+  totalAmount       Decimal       @db.Decimal(15, 2)
+
+  // Offline and AI features
+  localTimestamp    DateTime      // Timestamp from the phone when record was created
+  syncStatus        SyncStatus    @default(SYNCED)
+  scalePhotoUrl     String?
+  moisturePhotoUrl  String?
+  aiFlagged         Boolean       @default(false)
+  aiFlagReason      String?
+
+  paymentStatus     PaymentStatus @default(PENDING)
+  bankReferenceNo   String?
+
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+}
