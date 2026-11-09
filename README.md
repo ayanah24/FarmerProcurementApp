@@ -1,81 +1,139 @@
 # 🌾 Farmer Procurement Application (FPC PWA)
 
-An offline-first, Progressive Web Application (PWA) and backend system built for a Farmer Producer Company (FPC) to digitize produce procurement at village collection centers, eliminate calculation errors, automate moisture deductions, and streamline farmer payments.
+> An offline-first, Progressive Web Application (PWA) and backend management system built for a **Farmer Producer Company (FPC)**. Digitize produce procurement at village collection centers, automate moisture deductions, eliminate weighment tampering, ensure DPDP Act compliance, and accelerate farmer bank disbursements from 12 days to 2 days.
+
+---
+
+## 📑 Table of Contents
+1. [Quick Start (Docker Compose)](#-quick-start-docker-compose)
+2. [Test Accounts & Credentials](#-test-accounts--credentials)
+3. [System Architecture Overview](#-system-architecture-overview)
+4. [Detailed Feature Guide](#-detailed-feature-guide)
+5. [Business Logic & Formulas](#-business-logic--formulas)
+6. [API Endpoints Reference](#-api-endpoints-reference)
+7. [Troubleshooting & FAQ](#-troubleshooting--faq)
+8. [Architecture Specification](#-architecture-specification)
 
 ---
 
 ## 🚀 Quick Start (Docker Compose)
 
 ### Prerequisites
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running with WSL 2 / Linux engine)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running on your computer.
 
-### Run the App
-From the `FarmerProcurementApp` directory:
+### Start All Services
+Open your terminal inside the `FarmerProcurementApp` directory and run:
 
 ```bash
-docker-compose up --build
+docker-compose up --build -d
 ```
 
-The database is automatically created, migrated, and seeded on startup.
+The database is automatically created, schema pushed, and seeded with regional crops, today's prices, and test accounts.
 
-| Service | URL / Port | Description |
-|---|---|---|
-| **Frontend PWA** | [http://localhost](http://localhost) | React + Vite served via Nginx |
-| **Backend API** | [http://localhost/api](http://localhost/api) (or `localhost:5000`) | Express + Prisma REST API |
-| **PostgreSQL** | `localhost:5432` | Postgres database |
-
----
-
-## 🔑 Test Credentials
-
-| Role | Username | Password | Permitted Actions |
+| Service | Address | Technology | Purpose |
 |---|---|---|---|
-| **Office Manager** | `manager` | `manager123` | Verify farmer bank accounts, publish daily prices, approve payments, export bank CSV, review AI anomalies |
-| **Center Operator** | `operator1` | `operator123` | Register farmers, record produce procurement slips, view today's prices |
+| **Frontend PWA** | [http://localhost](http://localhost) | React 19 + Nginx | Village Operator & Manager UI |
+| **Backend API** | [http://localhost/api](http://localhost/api) | Node 22 + Express 5 | REST API & Business Logic |
+| **PostgreSQL Database** | `localhost:5432` | PostgreSQL 15 | Relational Data Store |
 
 ---
 
-## 📐 Architecture & Key Features
+## 🔑 Test Accounts & Credentials
 
-### 1. Offline-First PWA (Dexie.js + IndexedDB)
-- Village collection centers often have weak or intermittent internet connectivity.
-- Operators can register farmers and record procurement entries completely offline.
-- Data is stored in client-side IndexedDB using **Dexie.js**.
-- When internet connectivity returns, the custom `useSync` hook automatically sends queued `PENDING` records to `/api/procurements/sync` and reconciles temporary local IDs with server IDs.
+The system pre-seeds two designated roles with full permission segregation:
 
-### 2. Business Logic & Calculations
-- **Moisture Deduction:** Standard acceptable moisture is 12.0%. For every 1% moisture above 12%, a 1% deduction is applied to the net weight:
-  $$\text{Net Weight} = (\text{Gross} - \text{Tare}) \times \left(1 - \frac{\text{Moisture} - 12}{100}\right)$$
-- **Centralized Daily Price Board:** Daily prices per crop and grade are published centrally by the Office Manager. Collection centers fetch rates to prevent unauthorized rate manipulation.
-- **Precision Currency & Weights:** Weights stored to 1 decimal place (`Decimal(10, 1)` in kg), currency stored to 2 decimal places (`Decimal(15, 2)` in paisa).
-
-### 3. AI Anomaly & Fraud Detection Engine
-Every procurement submission is evaluated automatically:
-1. **Excessive Yield Check:** Flags if net weight exceeds 2,500 kg per hectare based on the farmer's registered land area (`"High yield for land size"`).
-2. **Frequency Check:** Flags if the same farmer submits produce more than once within a 1-hour window (`"Farmer appeared twice in one hour"`).
-3. **Manager Review:** All flagged transactions appear in the Manager Control Panel under the **AI Anomaly Flagged** tab for inspection before payment approval.
-
-### 4. Security & DPDP Act 2023 Compliance
-- **No Aadhaar Storage:** In strict adherence to India's Digital Personal Data Protection (DPDP) Act 2023, Aadhaar numbers are never collected, validated, or stored.
-- Farmers are assigned system-generated codes (`F-XXXXX`).
-- **Role-Based Access Control (RBAC):** Express routes and React navigation guards enforce strict permission separation between operators and managers.
-- **Bank Verification Guard:** Procurement from farmers with unverified bank details is blocked until approved by an Office Manager.
+| Role | Username | Password | Intended User | Permitted Capabilities |
+|---|---|---|---|---|
+| **Center Operator** | `operator1` | `operator123` | Village Collection Operator | Register farmers, record weighment slips, view today's price board |
+| **Office Manager** | `manager` | `manager123` | FPC Central Office Executive | Verify farmer bank accounts, publish daily prices, approve payments, export bank CSV, audit AI anomalies |
 
 ---
 
-## 🛠️ Tech Stack
+## 📐 System Architecture Overview
 
-- **Backend:** Node.js 22, Express 5, Prisma ORM 6, PostgreSQL 15, Zod, JWT, bcryptjs
-- **Frontend:** React 19, Vite 8, `vite-plugin-pwa` (Service Workers), Dexie.js 4 (IndexedDB), Axios, React Router 7
-- **Deployment:** Docker, Docker Compose, Nginx (reverse proxy & static server)
+```mermaid
+flowchart LR
+    Client["PWA Client (Dexie.js / IndexedDB)"]
+    Nginx["Nginx Reverse Proxy (:80)"]
+    API["Express 5 REST API (:5000)"]
+    DB[("PostgreSQL 15 (:5432)")]
+
+    Client -- "Static Assets" --> Nginx
+    Client -- "Sync /api/*" --> Nginx
+    Nginx -- "Reverse Proxy" --> API
+    API -- "Prisma ORM" --> DB
+```
+
+*For complete in-depth architectural and engineering documentation, see [architecture.md](./architecture.md).*
 
 ---
 
-## 📡 API Reference
+## 🌟 Detailed Feature Guide
+
+### 1. 👨‍🌾 Farmer Registry (`/farmers`)
+- **Digital Registration:** Record farmer name, village, land area, and banking information.
+- **Auto-Generated Farmer Codes:** Newly registered farmers receive a unique system code (e.g. `F-01001`).
+- **DPDP Act 2023 Compliance:** Sensitive national identifiers (Aadhaar numbers) are **never requested or stored**, protecting farmers' biometric privacy.
+- **Offline Storage:** New farmer records can be created even with no mobile network; they are stored locally in IndexedDB and synchronized once online.
+
+### 2. 🏦 Bank Verification Workflow
+- Newly registered farmers start in a `Pending Verification` status.
+- **Security Guard:** Unverified farmers cannot be selected or procured from, protecting the FPC against payout rejections.
+- **Approval:** The Office Manager reviews bank credentials under the **Manager Tools** (`/manager`) tab and clicks **"Approve Bank Details"**.
+
+### 3. 📈 Centralized Daily Price Board (`/dashboard` & `/manager`)
+- Published centrally by the Office Manager for crops (*Soybean, Tur Dal, Wheat, Onion, Cotton*) and grades (**Grade A, B, C**).
+- **Tamper-Proof:** Village collection operators cannot alter rates locally, preventing rate manipulation.
+
+### 4. ⚖️ New Procurement Weighment Slip (`/procurement`)
+- Replaces manual paper receipts with an official digital weighment slip.
+- Bilingual interface with Marathi labels (`एकूण वजन`, `पोत्याचे वजन`, `ओलावा`, `काटे वजन`).
+- Real-time deduction calculations displayed in an official summary breakdown box.
+
+### 5. 🚨 AI Anomaly & Fraud Detection Engine
+Automated heuristic algorithms evaluate every transaction in real-time:
+- **Excessive Yield Alert:** Flags if net weight exceeds 2,500 kg per hectare based on the farmer's registered land area (`"High yield for land size"`). Prevents middlemen from smuggling third-party grain under a farmer's name.
+- **Velocity / Frequency Alert:** Flags if the same farmer submits produce more than once within a rolling 60-minute window (`"Farmer appeared twice in one hour"`). Prevents duplicate weighment slips.
+
+### 6. 💳 Payment Approvals & Direct Bank Export
+- Office Manager reviews procurement slips, inspects weights and AI warning flags, and approves payment.
+- **1-Click Bank Disbursement File:** Downloads an official corporate banking CSV ready for direct upload to SBI, HDFC, or ICICI portals for bulk NEFT/RTGS payments:
+  ```csv
+  FarmerName,AccountNumber,IFSC,Amount
+  Ramesh Patil,34982749283,SBIN0001234,4704.00
+  ```
+
+### 7. 🔄 Offline-First PWA Synchronization
+- Collection centers operate seamlessly during complete internet outages.
+- The `useSync` hook listens to browser connectivity events and flushes pending offline transactions to `/api/procurements/sync` as soon as the connection resumes.
+
+---
+
+## 🧮 Business Logic & Formulas
+
+### 1. Moisture Penalty Deduction Formula
+Standard acceptable grain moisture is **12.0%**. For every 1% of excess moisture above 12%, a 1% deduction penalty is applied to the net produce weight:
+
+$$\text{Net Weight} = \text{Gross Weight} - \text{Tare Weight}$$
+
+$$\text{Deduction \%} = \max(0, \text{Moisture} - 12.0)$$
+
+$$\text{Final Paid Weight} = \text{Net Weight} \times \left(1 - \frac{\text{Deduction \%}}{100}\right)$$
+
+*Example: 110 kg Gross, 10 kg Tare (100 kg Net) at 14.0% Moisture (2% excess) yields a final paid weight of $100 \times (1 - 0.02) = 98.0\text{ kg}$.*
+
+### 2. Total Amount Calculation
+Rates are published per Quintal ($1\text{ Quintal} = 100\text{ kg}$):
+
+$$\text{Total Amount (₹)} = \left(\frac{\text{Final Paid Weight}}{100}\right) \times \text{Rate per Quintal}$$
+
+---
+
+## 📡 API Endpoints Reference
 
 ### Authentication
 - `POST /api/auth/register` — Register a new operator or manager
-- `POST /api/auth/login` — Authenticate and receive JWT
+- `POST /api/auth/login` — Authenticate and receive JWT bearer token
 
 ### Farmers
 - `GET /api/farmers` — List all registered farmers
@@ -83,14 +141,36 @@ Every procurement submission is evaluated automatically:
 - `PATCH /api/farmers/:id/verify` — Approve farmer bank details *(Manager only)*
 
 ### Prices & Crops
-- `GET /api/prices/today` — Get today's active price board
+- `GET /api/prices/today` — Fetch active daily price board
 - `POST /api/prices` — Publish/update daily rate per crop & grade *(Manager only)*
 - `GET /api/prices/crops` — List supported crops
 - `POST /api/prices/crops` — Add new crop *(Manager only)*
 
 ### Procurements
 - `GET /api/procurements` — List procurements (includes AI flag metadata)
-- `POST /api/procurements` — Create procurement slip (applies moisture deduction & AI check)
-- `POST /api/procurements/sync` — Bulk batch sync for offline records
+- `POST /api/procurements` — Create procurement slip (applies moisture formula & AI checks)
+- `POST /api/procurements/sync` — Batch synchronization endpoint for offline records
 - `PATCH /api/procurements/:id/approve` — Approve payment *(Manager only)*
 - `GET /api/procurements/export-bank-file` — Download bank disbursement CSV *(Manager only)*
+
+---
+
+## ❓ Troubleshooting & FAQ
+
+### Q: Login fails with "Login failed. Please check credentials."
+**Cause:** Docker Desktop is stopped, meaning the backend server cannot be reached.  
+**Solution:**
+1. Open **Docker Desktop** from your Windows Start Menu and wait until the whale icon shows running.
+2. In your terminal, run `docker-compose up -d`.
+3. Try logging in again at [http://localhost](http://localhost).
+
+### Q: UI appears outdated or shows old styles.
+**Cause:** PWA Service Worker has cached previous assets.  
+**Solution:** Press **`Ctrl + Shift + R`** (hard refresh) or open [http://localhost](http://localhost) in an **Incognito Window** (`Ctrl + Shift + N`).
+
+---
+
+## 📖 Architecture Specification
+
+For the exhaustive engineering document covering component design, sequence diagrams, Prisma models, and idempotency guarantees, read:  
+👉 **[architecture.md](./architecture.md)**
