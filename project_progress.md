@@ -28,8 +28,13 @@ This document details the step-by-step development, architectural decisions, and
 
 - **Directory:** `frontend/`
 - **Framework:** React with Vite
-- **Dependencies:** `dexie`, `axios`, `react-router-dom`
-- **Next Steps:** PWA setup will be handled in a dedicated step.
+- **Dependencies:** `dexie`, `axios`, `react-router-dom`, `vite-plugin-pwa`
+- **Setup:**
+    - Established project structure (components, pages, context, db, hooks, services, utils).
+    - Configured `Dexie.js` for local IndexedDB storage.
+    - Set up `axios` base client with auth interceptors.
+    - Implemented `react-router-dom` for client-side routing, including a Login page.
+    - Configured `vite-plugin-pwa` for service worker offline capability.
 
 ## 3. Backend Implementation: Core Security
 
@@ -49,3 +54,47 @@ This document details the step-by-step development, architectural decisions, and
 - Implemented daily price setting by crop and grade.
 - Ensure all centers fetch the same price centrally.
 
+## 5. Frontend Implementation: Core UI & Features
+
+### 5.1 Dashboard & Navigation
+- Implemented `Dashboard` page with a logout feature.
+- Added `ProtectedRoute` to ensure only logged-in users can access core features.
+- Established basic layout and navigation structure.
+
+### 5.2 Farmer Registry Page
+- Built `Farmers.jsx` for displaying registered farmers.
+- Integrated Dexie.js for offline reading/caching of farmer data.
+- Added "Add New Farmer" modal with immediate Dexie local storage support when offline.
+- Connected route `/farmers` in `App.jsx`.
+
+### 5.3 Procurement Form
+- Built `Procurement.jsx` for recording produce collection.
+- Implemented real-time moisture deduction logic as per strategy (Deduction if moisture > 12%).
+- Auto-calculation of final weight and total amount based on daily price board data.
+- Integrated with Dexie.js for immediate local storage and background sync.
+- Added Marathi labels to UI for operator accessibility.
+- Connected route `/procurement` in `App.jsx`.
+
+### 5.4 Automated Offline Sync Service
+- Created `useSync.js` custom hook for global sync management.
+- Listens to browser `online` network events to automatically trigger background sync.
+- Runs every 30 seconds as a fallback to clear `PENDING` offline records in Dexie.
+- Reconciles temporary local farmer IDs with server-assigned primary keys.
+- Integrated directly into root `App.jsx` component.
+
+### 5.5 Office Manager Tools
+- Built `Manager.jsx` component with three functional tabs:
+  1. **Bank Verification:** Review and approve pending farmer bank details.
+  2. **Daily Price Board:** Publish centralized rates per crop and grade to all collection centers.
+  3. **AI Anomaly Detection:** Review procurements flagged for unexpected yields or suspicious entries.
+- Enhanced `ProtectedRoute` in `App.jsx` with role-based restriction (`OFFICE_MANAGER`).
+
+## 6. Deployment & Containerization
+
+### 6.1 Dockerization (Docker Compose)
+- Created multi-stage `Dockerfile` for the Node.js/Prisma backend based on `node:22-slim` with OpenSSL and CA certificate support.
+- Configured automatic Prisma database push (`npx prisma db push`) and data seeding (`prisma/seed.js`) on container initialization.
+- Created multi-stage `Dockerfile` for the React/Vite frontend using an Nginx alpine image to serve static files.
+- Added custom `nginx.conf` providing SPA client-side routing fallback and `/api/` reverse-proxying directly to backend container.
+- Configured a root `docker-compose.yml` orchestrating PostgreSQL (with healthcheck), Backend, and Frontend services with persistent volumes.
+- Verified build and verified end-to-end container operation (`postgres`, `backend`, `frontend`).

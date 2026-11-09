@@ -13,8 +13,8 @@ router.get('/', protect, getProcurements);
 router.post('/', protect, authorize('CENTER_OPERATOR'), createProcurement);
 router.post('/sync', protect, authorize('CENTER_OPERATOR'), syncProcurements);
 
-// Manager only
-router.patch('/:id/approve', protect, authorize('OFFICE_MANAGER'), approvePayment);
+// Manager only — static routes BEFORE /:id parameterised routes
 router.get('/export-bank-file', protect, authorize('OFFICE_MANAGER'), generateBankFile);
+router.patch('/:id/approve', protect, authorize('OFFICE_MANAGER'), approvePayment);
 
 module.exports = router;

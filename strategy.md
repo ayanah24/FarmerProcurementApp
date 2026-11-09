@@ -4,7 +4,7 @@
 To digitize the procurement process for a Farmer Producer Company, reducing errors, speeding up payments, and ensuring offline capability at village collection centers.
 
 ## Architectural Pillars
-1. **Offline-First (PWA + IndexedDB):** Operators must be able to record produce even without internet. We use `Dexie.js` on the frontend to cache data locally and sync when back online.
+1. **Offline-First (PWA + IndexedDB):** Operators must be able to record produce even without internet. We use `Dexie.js` on the frontend to cache data locally and sync when back online. `vite-plugin-pwa` is implemented to enable service workers and offline accessibility.
 2. **MVC Pattern (Backend):** Separating Routes, Controllers, and Models (via Prisma) for maintainability.
 3. **Data Integrity:**
     - Tamper-proof timestamps for offline entries.

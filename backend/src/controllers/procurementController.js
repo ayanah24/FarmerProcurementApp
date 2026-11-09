@@ -49,6 +49,10 @@ exports.createProcurement = async (req, res) => {
 
     if (!farmer) return res.status(404).json({ message: "Farmer not found" });
 
+    if (!farmer.isVerified) {
+      return res.status(400).json({ message: "Cannot create procurement: Farmer bank details are pending verification." });
+    }
+
     // Business Rule: Moisture Deduction
     // 1% reduction for each moisture point above 12%
     let netWeight = body.grossWeight - body.tareWeight;
