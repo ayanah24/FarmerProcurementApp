@@ -63,14 +63,19 @@ function Farmers() {
       } else {
         const tempFarmer = {
           id: 'temp_' + Date.now(),
-          farmerCode: 'TEMP-' + Math.floor(Math.random() * 1000),
+          farmerCode: 'TEMP-' + Math.floor(Math.random() * 100000),
           ...farmerPayload,
           isVerified: false,
           syncStatus: 'PENDING'
         };
-        await db.farmers.add(tempFarmer);
-        setFarmers(prev => [...prev, tempFarmer]);
-        alert('ऑफलाइन मोड: शेतकरी नोंदणी स्थानिक साठवली गेली आहे. इंटरनेट सुरू झाल्यावर सिंक होईल.');
+        try {
+          await db.farmers.add(tempFarmer);
+          setFarmers(prev => [...prev, tempFarmer]);
+          alert('ऑफलाइन मोड: शेतकरी नोंदणी स्थानिक साठवली गेली आहे. इंटरनेट सुरू झाल्यावर सिंक होईल.');
+        } catch (dbErr) {
+          console.error('Dexie Add Error:', dbErr);
+          alert('स्थानिक डेटाबेस एरर: नोंदणी साठवता आली नाही.');
+        }
       }
 
       setShowAddModal(false);
