@@ -53,8 +53,8 @@ The backend reads environment variables passed via `docker-compose.yml`:
 
 ```yaml
 environment:
-  - DATABASE_URL=postgresql://postgres:password123@postgres:5432/farmer_procurement?schema=public
-  - JWT_SECRET=supersecretjwtkey123
+  - DATABASE_URL=postgresql://postgres:@pass/farmer_procurement?schema=public
+  - JWT_SECRET=***********
   - PORT=5000
 ```
 
@@ -314,3 +314,4 @@ docker-compose up -d
 | `port is already allocated: 80` or `5432` | Host port is in use by another application (e.g. IIS, local Postgres). | Stop the conflicting local service or change the host port mapping in `docker-compose.yml` (e.g. `"8080:80"`). |
 | Browser shows old UI / outdated styles | PWA Service Worker has cached previous assets. | Hard-refresh with **`Ctrl + Shift + R`** or test in an **Incognito Window** (`Ctrl + Shift + N`). |
 | `npm ci --omit=dev` fails during Docker build | Lockfile drift or package version incompatibility. | Dockerfile uses `npm install` with Node 22 Slim to resolve dependencies fresh. |
+
