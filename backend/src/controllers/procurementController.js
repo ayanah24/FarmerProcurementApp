@@ -86,39 +86,44 @@ exports.createProcurement = async (req, res) => {
 
 exports.syncProcurements = async (req, res) => {
   const { records } = req.body; // Array of procurement records
-  const results = [];
 
-  for (const record of records) {
-    try {
-      // Logic similar to createProcurement but wrapped in a loop for batch sync
-      // Using upsert to handle cases where a record might have partially synced
-      // For brevity in this step, we assume records are valid
-      const farmer = await prisma.farmer.findUnique({ where: { id: record.farmerId } });
-      let netWeight = record.grossWeight - record.tareWeight;
-      if (record.moisture > 12) {
-        netWeight = netWeight * (1 - (record.moisture - 12) / 100);
-      }
-      const totalAmount = netWeight * (record.rateApplied / 100);
+  try {
+    const results = await prisma.$transaction(async (prisma) => {
+      const synced = [];
+      for (const record of records) {
+        // Validate each record
+        const validated = procurementSchema.parse(record);
 
-      const p = await prisma.procurement.upsert({
-        where: { slipNo: record.slipNo },
-        update: { syncStatus: 'SYNCED' },
-        create: {
-          ...record,
-          localTimestamp: new Date(record.localTimestamp),
-          operatorId: req.user.id,
-          netWeight,
-          totalAmount,
-          syncStatus: 'SYNCED'
+        const farmer = await prisma.farmer.findUnique({ where: { id: validated.farmerId } });
+        if (!farmer) throw new Error(`Farmer ${validated.farmerId} not found`);
+
+        let netWeight = validated.grossWeight - validated.tareWeight;
+        if (validated.moisture > 12) {
+          netWeight = netWeight * (1 - (validated.moisture - 12) / 100);
         }
-      });
-      results.push(p);
-    } catch (e) {
-      console.error(`Sync failed for ${record.slipNo}:`, e.message);
-    }
-  }
+        const totalAmount = netWeight * (validated.rateApplied / 100);
 
-  res.json({ syncedCount: results.length });
+        const p = await prisma.procurement.upsert({
+          where: { slipNo: validated.slipNo },
+          update: { syncStatus: 'SYNCED' },
+          create: {
+            ...validated,
+            operatorId: req.user.id,
+            netWeight,
+            totalAmount,
+            syncStatus: 'SYNCED'
+          }
+        });
+        synced.push(p);
+      }
+      return synced;
+    });
+
+    res.json({ syncedCount: results.length });
+  } catch (e) {
+    console.error(`Sync failed:`, e.message);
+    res.status(400).json({ message: e.message || 'Sync failed' });
+  }
 };
 
 exports.getProcurements = async (req, res) => {
@@ -138,16 +143,24 @@ exports.approvePayment = async (req, res) => {
   res.json(p);
 };
 
+// Helper for CSV escaping
+const escapeCsvField = (field) => {
+  const stringField = String(field);
+  if (/^[@=+-]/.test(stringField)) {
+    return `'${stringField}`;
+  }
+  return stringField;
+};
+
 exports.generateBankFile = async (req, res) => {
   const approved = await prisma.procurement.findMany({
     where: { paymentStatus: 'APPROVED' },
     include: { farmer: true }
   });
 
-  // Mocking CSV generation
   let csv = "FarmerName,AccountNumber,IFSC,Amount\n";
   approved.forEach(p => {
-    csv += `${p.farmer.name},${p.farmer.accountNumber},${p.farmer.ifscCode},${p.totalAmount}\n`;
+    csv += `${escapeCsvField(p.farmer.name)},${escapeCsvField(p.farmer.accountNumber)},${escapeCsvField(p.farmer.ifscCode)},${p.totalAmount}\n`;
   });
 
   res.header('Content-Type', 'text/csv');
