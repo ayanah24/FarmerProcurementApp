@@ -1,122 +1,188 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import api from '../services/api';
 import { db } from '../db/db';
 
 function Dashboard() {
-  const navigate = useNavigate();
   const role = localStorage.getItem('role');
   const [prices, setPrices] = useState([]);
   const [loadingPrices, setLoadingPrices] = useState(true);
+  const [farmerCount, setFarmerCount] = useState(0);
 
   useEffect(() => {
-    loadPrices();
+    loadDashboardData();
   }, []);
 
-  const loadPrices = async () => {
+  const loadDashboardData = async () => {
     setLoadingPrices(true);
     try {
-      // 1. Try loading from local Dexie DB
+      // Load local Dexie data first
       const localPrices = await db.prices.toArray();
-      if (localPrices.length > 0) {
-        setPrices(localPrices);
-      }
+      if (localPrices.length > 0) setPrices(localPrices);
 
-      // 2. If online, fetch latest and sync
+      const localFarmers = await db.farmers.toArray();
+      setFarmerCount(localFarmers.length);
+
+      // Fetch fresh data if online
       if (navigator.onLine) {
-        const response = await api.get('/prices/today');
-        setPrices(response.data);
+        const [pricesRes, farmersRes] = await Promise.all([
+          api.get('/prices/today'),
+          api.get('/farmers')
+        ]);
+        setPrices(pricesRes.data);
+        setFarmerCount(farmersRes.data.length);
         await db.prices.clear();
-        await db.prices.bulkAdd(response.data);
+        await db.prices.bulkAdd(pricesRes.data);
       }
     } catch (err) {
-      console.error('Failed to load prices:', err);
+      console.error('Failed to load dashboard data:', err);
     } finally {
       setLoadingPrices(false);
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
-    navigate('/login');
-  };
+  const isManager = role === 'OFFICE_MANAGER';
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '800px', margin: '0 auto' }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-        <h1>Dashboard</h1>
-        <button onClick={handleLogout} style={{ padding: '0.5rem 1rem', cursor: 'pointer' }}>
-          Logout
-        </button>
-      </header>
+    <div className="gov-container">
+      {/* Welcome Banner */}
+      <div className="gov-card" style={{ borderLeft: '5px solid #0a3d62', background: '#ffffff' }}>
+        <div className="gov-card-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <h2 style={{ margin: '0 0 0.25rem 0', color: '#0a3d62' }}>
+              स्वागत आहे! {isManager ? 'कार्यालय व्यवस्थापक (Office Manager)' : 'संकलन केंद्र चालक (Center Operator)'}
+            </h2>
+            <p style={{ margin: 0, color: '#475569', fontSize: '0.9rem' }}>
+              शेतकरी धान्य संकलन व थेट बँक खात्यात रक्कम जमा प्रणाली (FPC Direct Payment Portal)
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <span className="gov-badge gov-badge-verified">
+              🟢 प्रणाली कार्यरत (System Online)
+            </span>
+          </div>
+        </div>
+      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
-        <div style={{ padding: '1.5rem', border: '1px solid #ddd', borderRadius: '8px', textAlign: 'left' }}>
-          <h2 style={{ fontSize: '1.5rem', margin: '0 0 0.5rem' }}>Farmer Registry</h2>
-          <p style={{ margin: '0 0 1rem' }}>Register and manage farmer details.</p>
-          <Link to="/farmers" style={{ color: '#aa3bff', fontWeight: 'bold', textDecoration: 'none' }}>Go to Registry →</Link>
+      {/* Primary Action Modules Grid */}
+      <div className="gov-grid" style={{ marginBottom: '1.5rem' }}>
+        {/* Module 1: Farmer Registry */}
+        <div className="gov-card" style={{ borderTop: '3px solid #1e5f8a' }}>
+          <div className="gov-card-body">
+            <div style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>👨‍🌾</div>
+            <h3 style={{ margin: '0 0 0.4rem 0', color: '#0a3d62' }}>शेतकरी नोंदणी (Farmer Registry)</h3>
+            <p style={{ color: '#64748b', fontSize: '0.88rem', marginBottom: '1.25rem' }}>
+              नवीन शेतकऱ्यांची नोंदणी, बँक खाते तपशील व पडताळणी स्थिती व्यवस्थापन.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.85rem', color: '#0a3d62', fontWeight: 600 }}>
+                नोंदणीकृत: {farmerCount} शेतकरी
+              </span>
+              <Link to="/farmers" className="gov-btn gov-btn-secondary" style={{ padding: '0.45rem 0.9rem' }}>
+                नोंदणी पहा →
+              </Link>
+            </div>
+          </div>
         </div>
 
-        <div style={{ padding: '1.5rem', border: '1px solid #ddd', borderRadius: '8px', textAlign: 'left' }}>
-          <h2 style={{ fontSize: '1.5rem', margin: '0 0 0.5rem' }}>New Procurement</h2>
-          <p style={{ margin: '0 0 1rem' }}>Record a new produce collection.</p>
-          <Link to="/procurement" style={{ color: '#aa3bff', fontWeight: 'bold', textDecoration: 'none' }}>Start Entry →</Link>
+        {/* Module 2: New Procurement Entry */}
+        <div className="gov-card" style={{ borderTop: '3px solid #1b5e20' }}>
+          <div className="gov-card-body">
+            <div style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>⚖️</div>
+            <h3 style={{ margin: '0 0 0.4rem 0', color: '#1b5e20' }}>नवीन धान्य खरेदी (New Procurement)</h3>
+            <p style={{ color: '#64748b', fontSize: '0.88rem', marginBottom: '1.25rem' }}>
+              धान्य वजन नोंद, स्वयंचलित ओलावा कपात व थेट खरेदी पावती निर्मिती.
+            </p>
+            <div style={{ textAlign: 'right' }}>
+              <Link to="/procurement" className="gov-btn gov-btn-success" style={{ padding: '0.45rem 1rem' }}>
+                + खरेदी नोंद सुरू करा
+              </Link>
+            </div>
+          </div>
         </div>
 
-        {role === 'OFFICE_MANAGER' && (
-          <div style={{ padding: '1.5rem', border: '1px solid #ddd', borderRadius: '8px', textAlign: 'left' }}>
-            <h2 style={{ fontSize: '1.5rem', margin: '0 0 0.5rem' }}>Manager Tools</h2>
-            <p style={{ margin: '0 0 1rem' }}>Verify bank details and manage prices.</p>
-            <Link to="/manager" style={{ color: '#aa3bff', fontWeight: 'bold', textDecoration: 'none' }}>Open Tools →</Link>
+        {/* Module 3: Office Manager Tools */}
+        {isManager && (
+          <div className="gov-card" style={{ borderTop: '3px solid #e65100' }}>
+            <div className="gov-card-body">
+              <div style={{ fontSize: '1.8rem', marginBottom: '0.5rem' }}>🏛️</div>
+              <h3 style={{ margin: '0 0 0.4rem 0', color: '#e65100' }}>व्यवस्थापक कक्ष (Manager Tools)</h3>
+              <p style={{ color: '#64748b', fontSize: '0.88rem', marginBottom: '1.25rem' }}>
+                बँक तपशील पडताळणी, दर फलक निश्चिती, AI संशयास्पद नोंदी व पेमेंट मंजुरी.
+              </p>
+              <div style={{ textAlign: 'right' }}>
+                <Link to="/manager" className="gov-btn gov-btn-primary" style={{ padding: '0.45rem 1rem' }}>
+                  व्यवस्थापक कक्ष उघडा →
+                </Link>
+              </div>
+            </div>
           </div>
         )}
       </div>
 
-      <section style={{ marginTop: '3rem', textAlign: 'left' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h3 style={{ fontSize: '1.25rem', margin: 0 }}>Daily Prices (Today) - दर फलक</h3>
-          <span style={{ fontSize: '0.85rem', color: '#666' }}>
-            {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-          </span>
+      {/* Centralized Price Board Table */}
+      <div className="gov-card">
+        <div className="gov-card-header">
+          <div>
+            <h3>दैनिक दर फलक (Centralized Daily Price Board)</h3>
+            <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+              तारीख: {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </span>
+          </div>
+          {isManager && (
+            <Link to="/manager" className="gov-btn gov-btn-secondary" style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem' }}>
+              दर बदला (Update Rates)
+            </Link>
+          )}
         </div>
 
-        {loadingPrices ? (
-          <p style={{ fontStyle: 'italic', color: '#666' }}>Fetching latest prices...</p>
-        ) : prices.length === 0 ? (
-          <p style={{ fontStyle: 'italic', color: '#666' }}>No rates published for today yet. Office Manager can publish rates in Manager Tools.</p>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', border: '1px solid #eee', borderRadius: '6px', overflow: 'hidden' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f7fafc', borderBottom: '2px solid #edf2f7' }}>
-                <th style={{ padding: '0.75rem 1rem' }}>पीक (Crop)</th>
-                <th style={{ padding: '0.75rem 1rem' }}>प्रत (Grade)</th>
-                <th style={{ padding: '0.75rem 1rem' }}>दर / क्विंटल (Rate / Quintal)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {prices.map(p => (
-                <tr key={p.id} style={{ borderBottom: '1px solid #edf2f7' }}>
-                  <td style={{ padding: '0.75rem 1rem', fontWeight: 'bold' }}>{p.crop?.name || 'Crop'}</td>
-                  <td style={{ padding: '0.75rem 1rem' }}>
-                    <span style={{
-                      padding: '0.2rem 0.5rem',
-                      borderRadius: '4px',
-                      backgroundColor: p.grade === 'A' ? '#ebf8ff' : p.grade === 'B' ? '#feebc8' : '#edf2f7',
-                      color: p.grade === 'A' ? '#2b6cb0' : p.grade === 'B' ? '#c05621' : '#4a5568',
-                      fontWeight: 'bold',
-                      fontSize: '0.85rem'
-                    }}>
-                      Grade {p.grade}
-                    </span>
-                  </td>
-                  <td style={{ padding: '0.75rem 1rem', color: '#2f855a', fontWeight: 'bold' }}>₹{p.ratePerQuintal}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </section>
+        <div className="gov-card-body" style={{ padding: 0 }}>
+          {loadingPrices ? (
+            <p style={{ padding: '1.5rem', color: '#64748b', margin: 0 }}>दर माहिती लोड होत आहे...</p>
+          ) : prices.length === 0 ? (
+            <p style={{ padding: '1.5rem', color: '#64748b', margin: 0 }}>
+              आजचे दर अद्याप प्रसिद्ध केलेले नाहीत. मुख्य कार्यालयातून दर निश्चित केले जातील.
+            </p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="gov-table" style={{ margin: 0 }}>
+                <thead>
+                  <tr>
+                    <th>अ.क्र. (Sr.)</th>
+                    <th>पीक (Crop)</th>
+                    <th>प्रत (Grade)</th>
+                    <th>अधिकृत दर / क्विंटल (Official Rate / Qtl)</th>
+                    <th>दर / किलो (Rate / Kg)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {prices.map((p, idx) => (
+                    <tr key={p.id}>
+                      <td style={{ width: '60px', textAlign: 'center', fontWeight: 'bold' }}>{idx + 1}</td>
+                      <td style={{ fontWeight: 600, color: '#0a3d62' }}>{p.crop?.name || 'Crop'}</td>
+                      <td>
+                        <span className="gov-badge" style={{
+                          backgroundColor: p.grade === 'A' ? '#e0f2fe' : p.grade === 'B' ? '#fef3c7' : '#f1f5f9',
+                          color: p.grade === 'A' ? '#0369a1' : p.grade === 'B' ? '#92400e' : '#475569',
+                          border: '1px solid rgba(0,0,0,0.1)'
+                        }}>
+                          Grade {p.grade}
+                        </span>
+                      </td>
+                      <td style={{ fontWeight: 700, color: '#1b5e20', fontSize: '1rem' }}>
+                        ₹{Number(p.ratePerQuintal).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td style={{ color: '#475569' }}>
+                        ₹{(Number(p.ratePerQuintal) / 100).toFixed(2)} / kg
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

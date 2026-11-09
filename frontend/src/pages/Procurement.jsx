@@ -9,6 +9,7 @@ function Procurement() {
   const [crops, setCrops] = useState([]);
   const [prices, setPrices] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     farmerId: '',
@@ -19,15 +20,12 @@ function Procurement() {
     moisture: '12.0',
   });
 
-  // Load initial data for the form
   useEffect(() => {
     const initForm = async () => {
       try {
-        // Load farmers and crops from local DB (updated by sync or previous page visits)
-        let localFarmers = await db.farmers.toArray();
+        const localFarmers = await db.farmers.toArray();
         setFarmers(localFarmers);
 
-        // Fetch fresh farmers, crops and today's prices if online
         if (navigator.onLine) {
           const [farmersRes, cropsRes, pricesRes] = await Promise.all([
             api.get('/farmers'),
@@ -41,17 +39,15 @@ function Procurement() {
           setCrops(cropsRes.data);
           setPrices(pricesRes.data);
 
-          // Cache prices in Dexie
           await db.prices.clear();
           await db.prices.bulkAdd(pricesRes.data);
         } else {
           const localPrices = await db.prices.toArray();
           setPrices(localPrices);
-          // For crops, we'd ideally have them cached too. Placeholder if not:
           setCrops([{ id: 'default-soybean', name: 'Soybean' }]);
         }
       } catch (err) {
-        console.error("Initialization error:", err);
+        console.error('Initialization error:', err);
       } finally {
         setLoading(false);
       }
@@ -59,7 +55,7 @@ function Procurement() {
     initForm();
   }, []);
 
-  // Real-time calculations based on strategy.md
+  // Real-time calculations: Moisture deduction logic (1% deduction per % above 12%)
   const calculations = useMemo(() => {
     const gross = parseFloat(formData.grossWeight) || 0;
     const tare = parseFloat(formData.tareWeight) || 0;
@@ -67,23 +63,23 @@ function Procurement() {
 
     const netWeight = Math.max(0, gross - tare);
 
-    // Moisture Deduction: If moisture > 12%, net weight = (gross - tare) * (1 - (moisture - 12)/100)
+    let deductionPercent = 0;
     let finalWeight = netWeight;
     if (moisture > 12) {
-      const deductionFactor = (moisture - 12) / 100;
-      finalWeight = netWeight * (1 - deductionFactor);
+      deductionPercent = moisture - 12;
+      finalWeight = netWeight * (1 - deductionPercent / 100);
     }
 
-    // Find applicable rate
     const priceObj = prices.find(p => p.cropId === formData.cropId && p.grade === formData.grade);
     const rate = priceObj ? parseFloat(priceObj.ratePerQuintal) : 0;
 
-    // Rate is per Quintal (100kg)
+    // Rate is per quintal (100 kg)
     const totalAmount = (finalWeight / 100) * rate;
 
     return {
       netWeight: netWeight.toFixed(1),
       finalWeight: finalWeight.toFixed(1),
+      deductionPercent: deductionPercent.toFixed(1),
       rate: rate.toFixed(2),
       totalAmount: totalAmount.toFixed(2)
     };
@@ -93,19 +89,21 @@ function Procurement() {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
+  const selectedFarmer = farmers.find(f => f.id === formData.farmerId);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.farmerId || !formData.cropId) {
-      alert("Please select farmer and crop.");
+      alert('कृपया शेतकरी व पीक निवडा. (Please select farmer and crop)');
       return;
     }
 
-    const selectedFarmer = farmers.find(f => f.id === formData.farmerId);
     if (selectedFarmer && !selectedFarmer.isVerified) {
-      alert("Cannot record procurement: Farmer bank details are pending verification by Office Manager.");
+      alert('खरेदी नोंद अशक्य: या शेतकऱ्याचे बँक खाते अद्याप मुख्य कार्यालयाकडून पडताळले गेलेले नाही.');
       return;
     }
 
+    setSubmitting(true);
     const procurementRecord = {
       id: crypto.randomUUID(),
       slipNo: `SLIP-${Date.now().toString().slice(-6)}`,
@@ -115,7 +113,7 @@ function Procurement() {
       grossWeight: parseFloat(formData.grossWeight),
       tareWeight: parseFloat(formData.tareWeight),
       moisture: parseFloat(formData.moisture),
-      netWeight: parseFloat(calculations.finalWeight),   // moisture-adjusted final weight
+      netWeight: parseFloat(calculations.finalWeight),
       rateApplied: parseFloat(calculations.rate),
       totalAmount: parseFloat(calculations.totalAmount),
       localTimestamp: new Date().toISOString(),
@@ -123,7 +121,6 @@ function Procurement() {
     };
 
     try {
-      // Save to local Dexie buffer immediately
       await db.procurements.add(procurementRecord);
 
       if (navigator.onLine) {
@@ -131,102 +128,205 @@ function Procurement() {
           await api.post('/procurements', procurementRecord);
           await db.procurements.update(procurementRecord.id, { syncStatus: 'SYNCED' });
         } catch (syncErr) {
-          console.warn("Direct sync failed, keeping in local buffer:", syncErr);
+          console.warn('Direct sync failed, keeping in local buffer:', syncErr);
         }
       }
 
-      alert(`Success! Slip No: ${procurementRecord.slipNo}\nFinal Weight: ${calculations.finalWeight}kg\nAmount: ₹${calculations.totalAmount}`);
+      alert(`✅ खरेदी पावती यशस्वीरीत्या जतन केली!\nपावती क्र: ${procurementRecord.slipNo}\nअंतिम वजन: ${calculations.finalWeight} kg\nएकूण देय रक्कम: ₹${calculations.totalAmount}`);
       navigate('/dashboard');
     } catch (err) {
-      console.error("Submission error:", err);
-      alert("Failed to save procurement.");
+      console.error('Submission error:', err);
+      alert('खरेदी जतन करणे अयशस्वी झाले. कृपया पुन्हा प्रयत्न करा.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  if (loading) return <p>Loading form...</p>;
+  if (loading) {
+    return (
+      <div className="gov-container" style={{ textAlign: 'center', padding: '3rem' }}>
+        <p>खरेदी फॉर्म लोड होत आहे...</p>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '600px', margin: '0 auto', textAlign: 'left' }}>
-      <button onClick={() => navigate('/dashboard')} style={{ marginBottom: '1rem', cursor: 'pointer' }}>
-        ← Back
-      </button>
-
-      <h1 style={{ marginBottom: '0.5rem' }}>नवीन खरेदी (New Procurement)</h1>
-      <p style={{ color: '#666', marginBottom: '2rem' }}>Record produce collection details below.</p>
-
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-        <div>
-          <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>शेतकरी (Farmer)</label>
-          <select name="farmerId" value={formData.farmerId} onChange={handleChange} required style={{ width: '100%', padding: '0.75rem' }}>
-            <option value="">Select Farmer</option>
-            {farmers.map(f => (
-              <option key={f.id} value={f.id} disabled={!f.isVerified}>
-                {f.name} ({f.farmerCode}) {!f.isVerified ? ' - ⚠️ (Bank Verification Pending - Not Selectable)' : ' - ✅ (Verified)'}
-              </option>
-            ))}
-          </select>
-          {farmers.length === 0 ? (
-            <p style={{ color: '#e53e3e', fontSize: '0.85rem', marginTop: '0.25rem' }}>
-              No farmers found in registry. Please register a farmer first.
+    <div className="gov-container" style={{ maxWidth: '780px' }}>
+      <div className="gov-card">
+        <div className="gov-card-header" style={{ backgroundColor: '#0a3d62', color: '#ffffff' }}>
+          <div>
+            <h2 style={{ color: '#ffffff', margin: 0, fontSize: '1.25rem' }}>
+              ⚖️ नवीन धान्य खरेदी नोंद पावती (Produce Procurement Weighment Slip)
+            </h2>
+            <p style={{ margin: '0.25rem 0 0', color: '#cbd5e1', fontSize: '0.85rem' }}>
+              संकलन केंद्र वजन व ओलावा तपासणी फॉर्म
             </p>
-          ) : (
-            <p style={{ color: '#666', fontSize: '0.8rem', marginTop: '0.25rem' }}>
-              Only farmers with verified bank details can be selected for procurement.
-            </p>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <div style={{ flex: 1 }}>
-            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>पीक (Crop)</label>
-            <select name="cropId" value={formData.cropId} onChange={handleChange} required style={{ width: '100%', padding: '0.75rem' }}>
-              <option value="">Select Crop</option>
-              {crops.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </div>
-          <div style={{ flex: 1 }}>
-            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>प्रत (Grade)</label>
-            <select name="grade" value={formData.grade} onChange={handleChange} style={{ width: '100%', padding: '0.75rem' }}>
-              <option value="A">Grade A</option>
-              <option value="B">Grade B</option>
-              <option value="C">Grade C</option>
-            </select>
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <div style={{ flex: 1 }}>
-            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>एकूण वजन (Gross kg)</label>
-            <input type="number" step="0.1" name="grossWeight" value={formData.grossWeight} onChange={handleChange} required style={{ width: '100%', padding: '0.75rem' }} />
-          </div>
-          <div style={{ flex: 1 }}>
-            <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>पोत्याचे वजन (Tare kg)</label>
-            <input type="number" step="0.1" name="tareWeight" value={formData.tareWeight} onChange={handleChange} required style={{ width: '100%', padding: '0.75rem' }} />
-          </div>
-        </div>
+        <div className="gov-card-body">
+          <form onSubmit={handleSubmit}>
+            {/* Farmer Selection */}
+            <div className="gov-form-group">
+              <label>शेतकरी निवडा / Select Farmer *</label>
+              <select
+                name="farmerId"
+                className="gov-select"
+                value={formData.farmerId}
+                onChange={handleChange}
+                required
+              >
+                <option value="">-- शेतकरी निवडा (Select Farmer) --</option>
+                {farmers.map(f => (
+                  <option key={f.id} value={f.id} disabled={!f.isVerified}>
+                    {f.name} ({f.farmerCode}) - {f.village} {!f.isVerified ? '⚠️ [बँक पडताळणी प्रलंबित - निवडता येत नाही]' : '✅ [पडताळणी पूर्ण]'}
+                  </option>
+                ))}
+              </select>
+              {farmers.length === 0 ? (
+                <p style={{ color: '#b71c1c', fontSize: '0.82rem', marginTop: '0.35rem' }}>
+                  नोंदणीकृत शेतकरी आढळले नाहीत. प्रथम "शेतकरी नोंदणी" मधून शेतकरी जोडा.
+                </p>
+              ) : (
+                <p style={{ color: '#64748b', fontSize: '0.8rem', marginTop: '0.35rem' }}>
+                  ℹ️ केवळ बँक खाते पडताळणी पूर्ण झालेले शेतकरीच खरेदीसाठी निवडता येतील.
+                </p>
+              )}
+            </div>
 
-        <div>
-          <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '0.5rem' }}>ओलावा (Moisture %)</label>
-          <input type="number" step="0.1" name="moisture" value={formData.moisture} onChange={handleChange} required style={{ width: '100%', padding: '0.75rem' }} />
-          {parseFloat(formData.moisture) > 12 && <p style={{ fontSize: '0.85rem', color: '#e53e3e', marginTop: '0.25rem' }}>Note: Moisture &gt; 12% will result in weight deduction.</p>}
-        </div>
+            {/* Crop & Grade Row */}
+            <div className="gov-row-2col">
+              <div className="gov-form-group" style={{ flex: 1 }}>
+                <label>पीक / Crop *</label>
+                <select
+                  name="cropId"
+                  className="gov-select"
+                  value={formData.cropId}
+                  onChange={handleChange}
+                  required
+                >
+                  <option value="">-- पीक निवडा --</option>
+                  {crops.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
 
-        {/* Calculation Summary Box */}
-        <div style={{ backgroundColor: '#f9f9f9', padding: '1.5rem', borderRadius: '8px', border: '1px solid #eee', marginTop: '1rem' }}>
-          <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem', borderBottom: '1px solid #ddd', paddingBottom: '0.5rem' }}>Calculation Summary</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', fontSize: '0.95rem' }}>
-            <span>Net Weight:</span> <span style={{ fontWeight: 'bold' }}>{calculations.netWeight} kg</span>
-            <span>Final Weight (Deducted):</span> <span style={{ fontWeight: 'bold', color: '#2b6cb0' }}>{calculations.finalWeight} kg</span>
-            <span>Rate Applied:</span> <span style={{ fontWeight: 'bold' }}>₹{calculations.rate}/quintal</span>
-            <span style={{ fontSize: '1.1rem', marginTop: '0.5rem' }}>Total Amount:</span>
-            <span style={{ fontSize: '1.1rem', marginTop: '0.5rem', fontWeight: 'bold', color: '#2f855a' }}>₹{calculations.totalAmount}</span>
-          </div>
-        </div>
+              <div className="gov-form-group" style={{ flex: 1 }}>
+                <label>प्रत / Quality Grade *</label>
+                <select
+                  name="grade"
+                  className="gov-select"
+                  value={formData.grade}
+                  onChange={handleChange}
+                  required
+                >
+                  <option value="A">Grade A (उत्कृष्ट)</option>
+                  <option value="B">Grade B (मध्यम)</option>
+                  <option value="C">Grade C (साधारण)</option>
+                </select>
+              </div>
+            </div>
 
-        <button type="submit" style={{ padding: '1rem', backgroundColor: '#aa3bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '1rem', fontWeight: 'bold', marginTop: '1rem' }}>
-          खरेदी जतन करा (Save Procurement)
-        </button>
-      </form>
+            {/* Weights Row */}
+            <div className="gov-row-2col">
+              <div className="gov-form-group" style={{ flex: 1 }}>
+                <label>एकूण वजन / Gross Weight (Kg) *</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  name="grossWeight"
+                  className="gov-input"
+                  placeholder="उदा. 1250.0"
+                  value={formData.grossWeight}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              <div className="gov-form-group" style={{ flex: 1 }}>
+                <label>पोत्याचे वजन / Tare Weight (Kg) *</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  name="tareWeight"
+                  className="gov-input"
+                  placeholder="उदा. 25.0"
+                  value={formData.tareWeight}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Moisture Content */}
+            <div className="gov-form-group">
+              <label>धान्य ओलावा / Moisture Content (%) *</label>
+              <input
+                type="number"
+                step="0.1"
+                name="moisture"
+                className="gov-input"
+                placeholder="मानक मर्यादा: 12.0%"
+                value={formData.moisture}
+                onChange={handleChange}
+                required
+              />
+              {parseFloat(formData.moisture) > 12 && (
+                <p style={{ color: '#b71c1c', fontSize: '0.85rem', marginTop: '0.35rem', fontWeight: 600 }}>
+                  ⚠️ ओलावा १२% पेक्षा जास्त आहे ({formData.moisture}%). {calculations.deductionPercent}% वजन कपात लागू झाली आहे.
+                </p>
+              )}
+            </div>
+
+            {/* Government Official Calculation Summary Box */}
+            <div className="gov-summary-box">
+              <div style={{ fontWeight: 700, color: '#0a3d62', borderBottom: '1px solid #cbd5e1', paddingBottom: '0.5rem', marginBottom: '0.75rem', fontSize: '0.95rem' }}>
+                📊 पावती हिशोब तपशील (Procurement Calculation Summary)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.9rem' }}>
+                <span>काटे वजन (Net Weight):</span>
+                <span style={{ fontWeight: 600 }}>{calculations.netWeight} kg</span>
+
+                <span>ओलावा कपात टक्केवारी:</span>
+                <span style={{ color: parseFloat(formData.moisture) > 12 ? '#b71c1c' : '#1b5e20', fontWeight: 600 }}>
+                  {parseFloat(formData.moisture) > 12 ? `-${calculations.deductionPercent}%` : '०% (मानक मर्यादेत)'}
+                </span>
+
+                <span>अंतिम देय वजन (Final Weight):</span>
+                <span style={{ fontWeight: 700, color: '#0a3d62' }}>{calculations.finalWeight} kg</span>
+
+                <span>लागू अधिकृत दर (Applied Rate):</span>
+                <span style={{ fontWeight: 600 }}>₹{calculations.rate} / क्विंटल</span>
+
+                <div style={{ gridColumn: 'span 2', height: '1px', background: '#cbd5e1', margin: '0.35rem 0' }}></div>
+
+                <span style={{ fontSize: '1.05rem', fontWeight: 700, color: '#0a3d62' }}>एकूण देय रक्कम (Total Amount):</span>
+                <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#1b5e20' }}>₹{calculations.totalAmount}</span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.5rem' }}>
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard')}
+                className="gov-btn gov-btn-secondary"
+              >
+                रद्द करा (Cancel)
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="gov-btn gov-btn-success"
+                style={{ padding: '0.75rem 1.5rem', fontSize: '1rem' }}
+              >
+                {submitting ? 'जतन होत आहे...' : '✓ खरेदी पावती जतन करा (Save Slip)'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

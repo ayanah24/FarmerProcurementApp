@@ -4,6 +4,8 @@ import Dashboard from './pages/Dashboard';
 import Farmers from './pages/Farmers';
 import Procurement from './pages/Procurement';
 import Manager from './pages/Manager';
+import Header from './components/Header';
+import Footer from './components/Footer';
 import { useSync } from './hooks/useSync';
 import './App.css';
 
@@ -28,42 +30,48 @@ function App() {
 
   return (
     <Router>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/farmers"
-          element={
-            <ProtectedRoute>
-              <Farmers />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/procurement"
-          element={
-            <ProtectedRoute>
-              <Procurement />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/manager"
-          element={
-            <ProtectedRoute requiredRole="OFFICE_MANAGER">
-              <Manager />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/" element={<Navigate to="/login" replace />} />
-      </Routes>
+      <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%' }}>
+        <Header />
+        <main style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/farmers"
+              element={
+                <ProtectedRoute>
+                  <Farmers />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/procurement"
+              element={
+                <ProtectedRoute>
+                  <Procurement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/manager"
+              element={
+                <ProtectedRoute requiredRole="OFFICE_MANAGER">
+                  <Manager />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/" element={<Navigate to="/login" replace />} />
+          </Routes>
+        </main>
+        <Footer />
+      </div>
     </Router>
   );
 }
