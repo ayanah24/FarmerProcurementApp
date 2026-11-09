@@ -170,7 +170,8 @@ $$\text{Total Amount (₹)} = \left(\frac{\text{Final Paid Weight}}{100}\right) 
 
 ---
 
-## 📖 Architecture Specification
+## 📖 Architecture & Deployment Specifications
 
-For the exhaustive engineering document covering component design, sequence diagrams, Prisma models, and idempotency guarantees, read:  
-👉 **[architecture.md](./architecture.md)**
+For detailed engineering, architecture, and deployment specifications, see:
+- 👉 **[architecture.md](./architecture.md)** — In-depth system design, component breakdown, ER diagrams, and offline sync protocol.
+- 👉 **[deployment.md](./deployment.md)** — Multi-stage Docker containerization, Nginx proxy setup, healthcheck orchestration, and production maintenance.

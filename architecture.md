@@ -274,3 +274,4 @@ The application deploys as an isolated multi-container stack orchestrated via `d
 
 - **Healthcheck Synchronization:** The backend container waits for PostgreSQL to pass native health checks (`pg_isready`) before launching, eliminating boot-order connection crashes.
 - **Zero-Config Startup:** Backend container startup automatically executes `prisma db push` to synchronize table schemas and runs `prisma/seed.js` to ensure immediate test readiness.
+
