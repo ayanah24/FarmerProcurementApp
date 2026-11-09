@@ -98,3 +98,14 @@ This document details the step-by-step development, architectural decisions, and
 - Added custom `nginx.conf` providing SPA client-side routing fallback and `/api/` reverse-proxying directly to backend container.
 - Configured a root `docker-compose.yml` orchestrating PostgreSQL (with healthcheck), Backend, and Frontend services with persistent volumes.
 - Verified build and verified end-to-end container operation (`postgres`, `backend`, `frontend`).
+
+## 7. UI Enhancements & Government Portal Design
+
+### 7.1 Typography & Layout Collision Fix
+- Resolved negative letter-spacing in root CSS that caused overlapping English and Marathi Devanagari characters.
+- Standardized typography with readable line-heights and system fonts for accessibility across mobile and desktop.
+
+### 7.2 Official Government Theme (Strict Light Mode)
+- Removed all dark mode media queries in favor of a bright, high-contrast daylight theme (`#f0f4f8` / `#ffffff`).
+- Integrated national tricolor header ribbon, bilingual branding, and official Navy Blue (`#0a3d62`) & Agriculture Green (`#1b5e20`) color scheme.
+- Added persistent Header navigation bar and Footer with DPDP Act 2023 compliance notices across all authenticated screens.
